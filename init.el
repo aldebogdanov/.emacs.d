@@ -108,6 +108,17 @@ See `cider-find-and-clear-repl-output' for more info."
                         (color-theme-sanityinc-tomorrow-eighties)
                         (set-face-attribute 'default nil :height 100))))
 
+(use-package company
+  :ensure t
+  :init
+  (add-hook 'after-init-hook 'global-company-mode)
+  :config
+  ;; Increase performance
+  (setq company-idle-delay 0.2
+        company-minimum-prefix-length 1
+        company-tooltip-align-annotations t
+        company-dabbrev-downcase nil))
+
 (use-package defaults
   :no-require
   :hook (prog-mode . display-line-numbers-mode)
@@ -194,6 +205,16 @@ See `cider-find-and-clear-repl-output' for more info."
             (executable-find "aspell")
             (executable-find "hunspell"))
   :hook ((org-mode git-commit-mode markdown-mode) . flyspell-mode))
+
+(use-package emacs
+  :config
+  (global-set-key (kbd "M-<backspace>") 'backward-delete-word)
+
+  (defun backward-delete-word (arg)
+    "Delete characters backward until encountering the beginning of a word.
+    This command does not affect the kill ring."
+    (interactive "p")
+    (delete-region (point) (progn (backward-word arg) (point)))))
 
 (use-package idle-highlight-in-visible-buffers-mode
   :ensure t
