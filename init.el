@@ -30,7 +30,9 @@
 
 (use-package clojure-mode
   :ensure t
-  :hook ((clojure-mode clojurec-mode clojurescript-mode) . my-clojure-mode-hook)
+  :hook (((clojure-mode clojurec-mode clojurescript-mode) . my-clojure-mode-hook)
+         (clojurescript-mode . (lambda ()
+                                (setq-local cider-default-cljs-repl 'shadow))))
   :custom
   (clojure-toplevel-inside-comment-form t)
   :config
@@ -84,6 +86,9 @@
   (cider-repl-prompt-function #'cider-repl-prompt-newline)
   (cider-auto-inspect-after-eval nil)
   (cider-enrich-classpath nil)
+  (cider-cljs-lein-repl
+   "(do (require 'shadow.cljs.devtools.api)
+        (shadow.cljs.devtools.api/nrepl-select :app))")
   :config
   (put 'cider-clojure-cli-aliases 'safe-local-variable #'listp)
   (defun cider-disable-linting ()
@@ -134,7 +139,7 @@ See `cider-find-and-clear-repl-output' for more info."
    auto-window-vscroll nil
    mouse-highlight t
    hscroll-step 1
-   debug-on-error t
+   ;; debug-on-error t
    desktop-save-mode 1
    hscroll-margin 1
    scroll-margin 0
@@ -205,6 +210,12 @@ See `cider-find-and-clear-repl-output' for more info."
             (executable-find "aspell")
             (executable-find "hunspell"))
   :hook ((org-mode git-commit-mode markdown-mode) . flyspell-mode))
+
+(use-package grep
+  :config
+  (setq grep-find-ignored-directories
+        (append grep-find-ignored-directories
+                '("node_modules" ".clj-kondo" ".git" ".lsp" ".cpcache" ".shadow-cljs"))))
 
 (use-package emacs
   :config
@@ -359,6 +370,11 @@ See `cider-find-and-clear-repl-output' for more info."
 (use-package nginx-mode
   :ensure t)
 
+(use-package prettier-js
+  :ensure t
+  :hook ((js-mode . prettier-js-mode)
+         (typescript-mode . prettier-js-mode)))
+
 (use-package projectile
   :ensure t)
 
@@ -367,9 +383,9 @@ See `cider-find-and-clear-repl-output' for more info."
 
 (use-package puni
   :ensure t
-  :bind (("C-M-+"  . puni-expand-region)
+  :bind (("C-M-="  . puni-expand-region)
 	 ("C-M--"  . puni-contract-region)
-	 ("C-M-="  . puni-mark-sexp-around-point)
+	 ("C-M-+"  . puni-mark-sexp-around-point)
 	 ("C-M-_"  . puni-mark-sexp-at-point)
 	 ("C-M-|"  . puni-mark-list-around-point)
 	 ("C-M-]"  . puni-slurp-forward)
@@ -389,6 +405,36 @@ See `cider-find-and-clear-repl-output' for more info."
 (use-package terraform-mode
   :ensure t)
 
+(use-package tide
+  :ensure t
+  :after (typescript-mode company flycheck)
+  :hook ((typescript-mode . tide-setup)
+         (typescript-mode . tide-hl-identifier-mode)
+         (before-save . tide-format-before-save)))
+
+(use-package typescript-mode
+  :ensure t
+  :mode ("\\.ts\\'" "\\.tsx\\'")
+  :config
+  (setq typescript-indent-level 2))
+
+(use-package vterm
+  :ensure t
+  :after exec-path-from-shell)
+
+(use-package wakatime-mode
+  :ensure t
+  :hook (after-init . global-wakatime-mode)
+  :custom
+  (wakatime-cli-path (expand-file-name "~/.wakatime/wakatime-cli")))
+
+(use-package web-mode
+  :ensure t
+  :mode ("\\.js\\'" "\\.jsx\\'" "\\.ts\\'" "\\.tsx\\'")
+  :config
+  (setq web-mode-content-types-alist '(("jsx" . "\\.js[x]?\\'")
+                                       ("tsx" . "\\.ts[x]?\\'"))))
+
 (use-package window-numbering
   :ensure t
   :custom
@@ -401,10 +447,6 @@ See `cider-find-and-clear-repl-output' for more info."
 (use-package yasnippet
   :ensure t
   :defer t)
-
-(use-package vterm
-  :ensure t
-  :after exec-path-from-shell)
 
 (provide 'init)
 ;;; init.el ends here
