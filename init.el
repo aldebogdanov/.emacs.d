@@ -427,6 +427,11 @@ See `cider-find-and-clear-repl-output' for more info."
   :config
   (setq typescript-indent-level 2))
 
+(use-package vertico
+  :ensure t
+  :init
+  (vertico-mode))
+
 (use-package vterm
   :ensure t
   :after exec-path-from-shell)
