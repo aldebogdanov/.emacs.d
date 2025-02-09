@@ -217,6 +217,9 @@ See `cider-find-and-clear-repl-output' for more info."
         (append grep-find-ignored-directories
                 '("node_modules" ".clj-kondo" ".git" ".lsp" ".cpcache" ".shadow-cljs"))))
 
+(use-package gptel
+  :ensure t)
+
 (use-package emacs
   :config
   (global-set-key (kbd "M-<backspace>") 'backward-delete-word)
@@ -231,7 +234,7 @@ See `cider-find-and-clear-repl-output' for more info."
   :ensure t
   :hook ((prog-mode . idle-highlight-in-visible-buffers-mode)
          (idle-highlight-in-visible-buffers-mode . (lambda ()
-                                                     (set-face-attribute 'idle-highlight-in-visible-buffers nil :background "gray20" :weight 'bold)))))
+                                                     (set-face-attribute 'idle-highlight-in-visible-buffers nil :weight 'bold)))))
 
 ;; ;;;; LSP
 
@@ -369,6 +372,12 @@ See `cider-find-and-clear-repl-output' for more info."
 
 (use-package nginx-mode
   :ensure t)
+
+(use-package orderless
+  :ensure t
+  :custom
+  (completion-styles '(orderless basic))
+  (completion-category-overrides '((file (styles basic partial-completion)))))
 
 (use-package prettier-js
   :ensure t
