@@ -1,469 +1,255 @@
-;; init.el --- Main configuration file -*- lexical-binding: t; no-byte-compile: t-*-
+;;; init.el --- Main configuration file -*- lexical-binding: t; no-byte-compile: t -*-
 
 ;; Author: Aleksandr Bogdanov
 ;; Homepage: https://github.com/aldebogdanov/.emacs.d.got
 
-;; Commentary:
-;; Emacs 29.4+ configuration.
+;;; Commentary:
+;; Emacs 29.4+ configuration adapted for Overtone/Clojure.
 
-;; Code:
+;;; Code:
 
-(use-package use-package
-  :no-require
-  :custom
-  (use-package-enable-imenu-support t))
+;;; 1. Package Management & Defaults
+;; -----------------------------------------------------------------------------
 
-(use-package early-init
-             :no-require
-             :unless (featurep 'early-init)
-             :config
-             (load-file (locate-user-emacs-file "early-init.el")))
+(require 'package)
+(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+(package-initialize)
 
-(use-package all-the-icons
-  :ensure t)
+;; Initialize use-package on non-Linux platforms or if missing
+(unless (package-installed-p 'use-package)
+  (package-refresh-contents)
+  (package-install 'use-package))
 
-(use-package clj-refactor
-  :ensure t)
+(require 'use-package)
+(setq use-package-always-ensure t) ;; Default to ensuring packages are installed
 
-(use-package cljstyle-format
-  :ensure t)
+;;; 2. Performance & Audio (Crucial for Overtone)
+;; -----------------------------------------------------------------------------
 
-(use-package clojure-mode
-  :ensure t
-  :hook (((clojure-mode clojurec-mode clojurescript-mode) . my-clojure-mode-hook)
-         (clojurescript-mode . (lambda ()
-                                (setq-local cider-default-cljs-repl 'shadow))))
-  :custom
-  (clojure-toplevel-inside-comment-form t)
-  :config
-  (defun my-clojure-mode-hook ()
-    (cider-mode 1)
-    (clj-refactor-mode 1)
-    (cljr-add-keybindings-with-prefix "C-c C-e")
-    (yas-minor-mode 1)
-    (cljstyle-format-on-save-mode 1)
-    (electric-pair-mode 1)
-    (rainbow-delimiters-mode 1)))
-
-(use-package cider
-  :ensure t
-  ;; :delight " CIDER"
-  :commands cider-find-and-clear-repl-buffer
-  :functions (cider-nrepl-request:eval
-              cider-find-and-clear-repl-output
-              cider-random-tip)
-  :hook (((cider-repl-mode cider-mode) . eldoc-mode)
-         ;; (cider-repl-mode . common-lisp-modes-mode)
-         (cider-popup-buffer-mode . cider-disable-linting))
-  :bind ( :map cider-repl-mode-map
-          ("C-c C-S-o" . cider-repl-clear-buffer)
-          :map cider-mode-map
-          ("C-c C-S-o" . cider-find-and-clear-repl-buffer)
-          ("C-c C-p" . cider-pprint-eval-last-sexp-to-comment))
-  :custom-face
-  (cider-result-overlay-face ((t (:box (:line-width -1 :color "grey50")))))
-  (cider-error-highlight-face ((t (:inherit flymake-error))))
-  (cider-warning-highlight-face ((t (:inherit flymake-warning))))
-  (cider-reader-conditional-face ((t (:inherit font-lock-comment-face))))
-  :custom
-  (nrepl-log-messages nil)
-  (cider-repl-display-help-banner nil)
-  (cider-repl-tab-command #'indent-for-tab-command)
-  (nrepl-hide-special-buffers t)
-  (cider-test-show-report-on-success t)
-  (cider-allow-jack-in-without-project t)
-  (cider-use-fringe-indicators nil)
-  (cider-font-lock-dynamically '(macro var deprecated))
-  (cider-save-file-on-load nil)
-  (cider-inspector-fill-frame nil)
-  (cider-auto-select-error-buffer t)
-  (cider-show-eval-spinner t)
-  (nrepl-use-ssh-fallback-for-remote-hosts t)
-  (cider-repl-history-file (expand-file-name "~/.cider-history"))
-  (cider-clojure-cli-global-options "-J-XX:-OmitStackTraceInFastThrow")
-  (cider-use-tooltips nil)
-  (cider-connection-message-fn #'cider-random-tip)
-  (cider-repl-prompt-function #'cider-repl-prompt-newline)
-  (cider-auto-inspect-after-eval nil)
-  (cider-enrich-classpath nil)
-  (cider-cljs-lein-repl
-   "(do (require 'shadow.cljs.devtools.api)
-        (shadow.cljs.devtools.api/nrepl-select :app))")
-  :config
-  (put 'cider-clojure-cli-aliases 'safe-local-variable #'listp)
-  (defun cider-disable-linting ()
-    "Disable linting integrations for current buffer."
-    (when (bound-and-true-p flymake-mode)
-      (flymake-mode -1)))
-  (defun cider-repl-prompt-newline (namespace)
-    "Return a prompt string that mentions NAMESPACE with a newline."
-    (format "%s\n> " namespace))
-  (defun cider-find-and-clear-repl-buffer ()
-    "Find the current REPL buffer and clear it.
-See `cider-find-and-clear-repl-output' for more info."
-    (interactive)
-    (cider-find-and-clear-repl-output 'clear-repl))
-  )
-
-(use-package color-theme-sanityinc-tomorrow
-  :ensure t
-  :hook (after-init . (lambda ()
-                        (setq custom-safe-themes
-                              '("04aa1c3ccaee1cc2b93b246c6fbcd597f7e6832a97aaeac7e5891e6863236f9f" default))
-                        (color-theme-sanityinc-tomorrow-eighties)
-                        (set-face-attribute 'default nil :height 100))))
-
-(use-package company
-  :ensure t
+;; GCMH (Garbage Collector Magic Hack)
+;; Crucial for audio: Prevents GC pauses while you are typing or triggering sounds.
+(use-package gcmh
   :init
-  (add-hook 'after-init-hook 'global-company-mode)
+  (setq gcmh-idle-delay 5
+        gcmh-high-cons-threshold (* 16 1024 1024)
+        gcmh-verbose nil)
   :config
-  ;; Increase performance
-  (setq company-idle-delay 0.2
-        company-minimum-prefix-length 1
-        company-tooltip-align-annotations t
-        company-dabbrev-downcase nil))
+  (gcmh-mode 1))
 
-(use-package compat
-  :ensure t)
+;; Restore sane GC limits after startup (handled by gcmh largely, but safe fallback)
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            (setq gc-cons-threshold (* 16 1024 1024)
+                  gc-cons-percentage 0.1)))
 
-(use-package defaults
-  :no-require
-  :hook (prog-mode . display-line-numbers-mode)
-  :preface
-  (setq-default
-   custom-file (concat user-emacs-directory "custom.el")
-   indent-tabs-mode nil
-   tooltip-mode nil
-   load-prefer-newer t
-   truncate-lines nil
-   bidi-paragraph-direction 'left-to-right
-   frame-title-format "Emacs"
-   auto-window-vscroll nil
-   mouse-highlight t
-   hscroll-step 1
-   ;; debug-on-error t
-   desktop-save-mode 1
-   hscroll-margin 1
-   scroll-margin 0
-   scroll-preserve-screen-position nil
-   tab-bar-mode t
-   tab-bar-history-mode t
-   frame-resize-pixelwise window-system
-   window-resize-pixelwise window-system)
-  (when (eq system-type 'darwin)
-    (setq-default
-     mac-right-command-modifier 'control
-     x-gtk-use-system-tooltips nil
-     delete-by-moving-to-trash t))
-  (when (window-system)
-    (setq-default
-     x-gtk-use-system-tooltips nil
-     cursor-type 'box
-     cursor-in-non-selected-windows nil))
-  (setq
-   ring-bell-function 'ignore
-   mode-line-percent-position nil
-   enable-recursive-minibuffers t)
-  (when (version<= "27.1" emacs-version)
-    (setq bidi-inhibit-bpa t))
-  (provide 'defaults))
-
-(use-package docker-compose-mode
-  :ensure t)
-
-(use-package dockerfile-mode
-  :ensure t)
-
-(use-package exec-path-from-shell
-  :ensure t
-  :when (or (memq window-system '(mac ns x))
-            (unless (memq system-type '(ms-dos windows-nt))
-              (daemonp)))
-  :config
-  (exec-path-from-shell-initialize))
-
-(use-package files
-  :preface
-  (defvar backup-dir
-    (locate-user-emacs-file ".cache/backups")
-    "Directory to store backups.")
-  (defvar auto-save-dir
-    (locate-user-emacs-file ".cache/auto-save/")
-    "Directory to store auto-save files.")
-  :custom
-  (backup-by-copying t)
-  (create-lockfiles nil)
-  (backup-directory-alist
-   `(("." . ,backup-dir)))
-  (auto-save-file-name-transforms
-   `((".*" ,auto-save-dir t)))
-  :init
-  (unless (file-exists-p auto-save-dir)
-    (make-directory auto-save-dir t)))
-
-(use-package flycheck-projectile
-  :ensure t
-  :custom
-  (global-flycheck-mode +1))
-
-(use-package flyspell
-  :ensure t
-  :when (or (executable-find "ispell")
-            (executable-find "aspell")
-            (executable-find "hunspell"))
-  :hook ((org-mode git-commit-mode markdown-mode) . flyspell-mode))
-
-(use-package grep
-  :config
-  (setq grep-find-ignored-directories
-        (append grep-find-ignored-directories
-                '("node_modules" ".clj-kondo" ".git" ".lsp" ".cpcache" ".shadow-cljs"))))
-
-(use-package gptel
-  :ensure t)
+;;; 3. Core UI & Experience
+;; -----------------------------------------------------------------------------
 
 (use-package emacs
+  :init
+  ;; Clean UI
+  (setq inhibit-startup-message t
+        ring-bell-function 'ignore
+        use-short-answers t)     ; y/n instead of yes/no
+  (global-display-line-numbers-mode t)
+  
+  ;; Encoding
+  (set-language-environment "UTF-8")
+
+  ;; Files & Backups
+  (setq make-backup-files nil    ; Stop creating ~ files
+        auto-save-default nil    ; Stop creating # files
+        create-lockfiles nil)    ; Stop creating .# files
+
+  ;; Tab bar (as per your previous config)
+  (tab-bar-mode 1)
+  (tab-bar-history-mode 1)
+  
+  ;; Mac/System specifics
+  (when (eq system-type 'darwin)
+    (setq mac-right-command-modifier 'control
+          delete-by-moving-to-trash t))
+  
+  ;; Better Scrolling (Emacs 29+)
+  (pixel-scroll-precision-mode 1))
+
+(use-package color-theme-sanityinc-tomorrow
   :config
-  (global-set-key (kbd "M-<backspace>") 'backward-delete-word)
+  (load-theme 'sanityinc-tomorrow-eighties t))
 
-  (defun backward-delete-word (arg)
-    "Delete characters backward until encountering the beginning of a word.
-    This command does not affect the kill ring."
-    (interactive "p")
-    (delete-region (point) (progn (backward-word arg) (point)))))
+(use-package all-the-icons
+  :if (display-graphic-p))
 
-(use-package idle-highlight-in-visible-buffers-mode
-  :ensure t
-  :hook ((prog-mode . idle-highlight-in-visible-buffers-mode)
-         (idle-highlight-in-visible-buffers-mode . (lambda ()
-                                                     (set-face-attribute 'idle-highlight-in-visible-buffers nil :weight 'bold)))))
+;; Highlight delimiters (Essential for Lisp)
+(use-package rainbow-delimiters
+  :hook (prog-mode . rainbow-delimiters-mode))
 
-;; ;;;; LSP
+;; Visual Undo
+(use-package vundo
+  :bind ("C-x u" . vundo))
 
-(use-package lsp-mode
-  :ensure t
-  :hook ((lsp-mode . lsp-diagnostics-mode))
-  :custom
-  (lsp-keymap-prefix "C-c l")
-  (lsp-auto-configure nil)
-  (lsp-diagnostics-provider :flymake)
-  (lsp-completion-provider :none)
-  (lsp-session-file (locate-user-emacs-file ".lsp-session"))
-  (lsp-log-io nil)
-  (lsp-keep-workspace-alive nil)
-  (lsp-idle-delay 0.5)
-  (lsp-enable-xref t)
-  (lsp-signature-doc-lines 1))
+;;; 4. Modern Completion Stack (Vertico + Corfu)
+;; -----------------------------------------------------------------------------
 
-(use-package lsp-completion
-  :no-require
-  :hook ((lsp-mode . lsp-completion-mode-maybe))
-  :commands (lsp-completion-mode)
-  :preface
-  (defun lsp-completion-mode-maybe ()
-    (unless (bound-and-true-p cider-mode)
-      (lsp-completion-mode 1))))
+;; Minibuffer completion (Files, M-x, etc)
+(use-package vertico
+  :init
+  (vertico-mode))
 
-(use-package lsp-treemacs
-  :ensure t
-  :defer t
-  :custom
-  (lsp-treemacs-theme "Iconless"))
+;; Better annotations for Minibuffer (e.g. file descriptions)
+(use-package marginalia
+  :init
+  (marginalia-mode))
 
-(use-package lsp-clojure
-  :demand t
-  :after lsp-mode
-  :hook (cider-mode . cider-toggle-lsp-completion-maybe)
-  :preface
-  (defun cider-toggle-lsp-completion-maybe ()
-    (lsp-completion-mode (if (bound-and-true-p cider-mode) -1 1))))
-
-(use-package lsp-clojure
-  :no-require
-  :hook ((clojure-mode
-          clojurec-mode
-          clojurescript-mode)
-         . lsp))
-
-(use-package lsp-java
-  :ensure t
-  :after lsp-mode)
-
-(use-package lsp-java
-  :hook (java-mode . lsp))
-
-(use-package lsp-metals
-  :ensure t
-  :after lsp-mode
-  :custom
-  (lsp-metals-server-args
-   '("-J-Dmetals.allow-multiline-string-formatting=off"
-     "-J-Dmetals.icons=unicode"))
-  (lsp-metals-enable-semantic-highlighting nil))
-
-(use-package lsp-metals
-  :hook (scala-mode . lsp))
-
-(defun my/hide-lsp-ui-doc-on-click (&rest _)
-  "Hide lsp-ui-doc unconditionally."
-  (when (lsp-ui-doc--visible-p)
-    (lsp-ui-doc-hide)))
-
-
-(defun my/toggle-lsp-ui-doc ()
-  (interactive)
-  (if (lsp-ui-doc--visible-p)
-    (lsp-ui-doc-hide)
-    (lsp-ui-doc-show)))
-
-
-(use-package lsp-ui
-             :ensure t
-             :config
-             (setq lsp-ui-doc-position 'at-point)
-             (setq lsp-ui-doc-show-with-cursor nil)
-             (setq lsp-ui-doc-show-with-mouse nil)
-
-             (advice-add 'mouse-set-point :before #'my/hide-lsp-ui-doc-on-click)
-
-             :bind (:map lsp-ui-mode-map
-                         ("C-c d" . lsp-ui-doc-show)
-                         ("C-c h" . lsp-ui-doc-hide)
-                         ("C-c t" . my/toggle-lsp-ui-doc)))
-
-
-;;;; Magit
-
-(use-package magit
-  :ensure t
-  :hook ((git-commit-mode . flyspell-mode)
-         ;; (git-commit-mode . magit-git-commit-insert-branch)
-         )
-  :bind ( :map project-prefix-map
-          ("m" . magit-project-status))
-  :custom
-  (magit-ediff-dwim-show-on-hunks t)
-  (magit-diff-refine-ignore-whitespace t)
-  (magit-diff-refine-hunk 'all)
-  ;; :preface
-  ;; (defun magit-extract-branch-tag (branch-name)
-  ;;   "Extract branch tag from BRANCH-NAME."
-  ;;   (let ((ticket-pattern "\\([[:alpha:]]+-[[:digit:]]+\\)"))
-  ;;     (when (string-match-p ticket-pattern branch-name)
-  ;;       (upcase (replace-regexp-in-string ticket-pattern "\\1: \n" branch-name)))))
-  ;; (defun magit-git-commit-insert-branch ()
-  ;;   "Insert the branch tag in the commit buffer if feasible."
-  ;;   (when-let ((tag (magit-extract-branch-tag (magit-get-current-branch))))
-  ;;     (insert tag)
-  ;;     (forward-char -1)))
-  )
-
-(use-package magit
-  :after project
-  :config
-  (add-to-list 'project-switch-commands
-               '(magit-project-status "Magit") t))
-
-(use-package magit-todos
-  :ensure t
-  :after magit
-  :config (magit-todos-mode 1))
-
-(use-package markdown-mode
-  :ensure t)
-
-(use-package nginx-mode
-  :ensure t)
-
+;; Fuzzy matching styles
 (use-package orderless
-  :ensure t
   :custom
   (completion-styles '(orderless basic))
   (completion-category-overrides '((file (styles basic partial-completion)))))
 
-(use-package prettier-js
-  :ensure t
-  :hook ((js-mode . prettier-js-mode)
-         (typescript-mode . prettier-js-mode)))
+;; In-buffer completion (Replaces Company for a more modern feel)
+(use-package corfu
+  :init
+  (global-corfu-mode)
+  :custom
+  (corfu-auto t)                 ; Enable auto completion
+  (corfu-cycle t)                ; Cycle through candidates
+  (corfu-quit-no-match 'separator)
+  (corfu-popupinfo-mode t)       ; Show documentation in popup
+  (corfu-popupinfo-delay 0.5))
+
+;; Add extensions for Corfu
+(use-package cape
+  :init
+  (add-to-list 'completion-at-point-functions #'cape-dabbrev)
+  (add-to-list 'completion-at-point-functions #'cape-file))
+
+;;; 5. Clojure & Overtone Setup
+;; -----------------------------------------------------------------------------
+
+(use-package clojure-mode
+  :config
+  (setq clojure-toplevel-inside-comment-form t))
+
+(use-package cider
+  :bind (:map cider-mode-map
+         ("C-c C-p" . cider-pprint-eval-last-sexp-to-comment))
+  :custom
+  ;; Overtone/Live Coding optimizations
+  (cider-repl-pop-to-buffer-on-connect nil) ; Don't steal focus when connecting
+  (cider-show-error-buffer nil)             ; Don't pop up error buffer automatically
+  (cider-auto-select-error-buffer nil)
+  (cider-repl-display-help-banner nil)
+  (cider-font-lock-dynamically '(macro var deprecated))
+  (cider-use-fringe-indicators nil)         ; Clean UI
+  :config
+  ;; Allow jack-in without project (useful for quick scratchpads)
+  (setq cider-allow-jack-in-without-project t))
+
+;; Structured Editing (Puni is great, kept it)
+(use-package puni
+  :hook ((prog-mode . puni-mode)
+         (term-mode . puni-disable-puni-mode))
+  :bind (:map puni-mode-map
+         ("C-M-="  . puni-expand-region)
+	       ("C-M--"  . puni-contract-region)
+	       ("C-M-+"  . puni-mark-sexp-around-point)
+	       ("C-M-_"  . puni-mark-sexp-at-point)
+	       ("C-M-|"  . puni-mark-list-around-point)
+	       ("C-M-]"  . puni-slurp-forward)
+	       ("C-M-["  . puni-slurp-backward)
+	       ("C-M-}"  . puni-barf-forward)
+	       ("C-M-{"  . puni-barf-backward)
+	       ("C-M-'"  . puni-raise)
+	       ("C-M-\"" . puni-convolute)
+	       ("C-M-;"  . puni-squeeze)))
+
+;;; 6. LSP (Language Server Protocol)
+;; -----------------------------------------------------------------------------
+;; Kept lsp-mode as it handles Java/Clojure heavy-lifting well.
+
+(use-package lsp-mode
+  :init
+  (setq lsp-keymap-prefix "C-c l")
+  :hook ((clojure-mode . lsp-deferred)
+         (clojurec-mode . lsp-deferred)
+         (clojurescript-mode . lsp-deferred)
+         (java-mode . lsp-deferred)
+         (scala-mode . lsp-deferred)
+         (lsp-mode . lsp-enable-which-key-integration))
+  :custom
+  (lsp-headerline-breadcrumb-enable nil)  ; Clean UI
+  (lsp-lens-enable t)                     ; Show reference counts
+  (lsp-enable-symbol-highlighting t)
+  (lsp-idle-delay 0.5)
+  (lsp-clojure-custom-server-command nil) ; Ensure it uses automatic path or define manually
+  :config
+  ;; Integrate with Orderless/Corfu
+  (setq lsp-completion-provider :none)
+  (defun corfu-lsp-setup ()
+    (setq-local completion-styles '(orderless)
+                completion-category-defaults nil))
+  (add-hook 'lsp-completion-mode-hook #'corfu-lsp-setup))
+
+(use-package lsp-ui
+  :after lsp-mode
+  :custom
+  (lsp-ui-doc-enable t)
+  (lsp-ui-doc-position 'at-point)
+  (lsp-ui-sideline-enable nil)) ;; Disable sideline for cleaner live-coding view
+
+(use-package lsp-java
+  :after lsp-mode)
+
+(use-package lsp-metals
+  :after lsp-mode)
+
+;;; 7. Tools & Utils
+;; -----------------------------------------------------------------------------
+
+(use-package magit
+  :commands magit-status)
+
+(use-package magit-todos
+  :after magit
+  :config (magit-todos-mode 1))
 
 (use-package projectile
-  :ensure t)
-
-(use-package protobuf-mode
-  :ensure t)
-
-(use-package puni
-  :ensure t
-  :bind (("C-M-="  . puni-expand-region)
-	 ("C-M--"  . puni-contract-region)
-	 ("C-M-+"  . puni-mark-sexp-around-point)
-	 ("C-M-_"  . puni-mark-sexp-at-point)
-	 ("C-M-|"  . puni-mark-list-around-point)
-	 ("C-M-]"  . puni-slurp-forward)
-	 ("C-M-["  . puni-slurp-backward)
-	 ("C-M-}"  . puni-barf-forward)
-	 ("C-M-{"  . puni-barf-backward)
-	 ("C-M-'"  . puni-raise)
-	 ("C-M-\"" . puni-convolute)
-	 ("C-M-;"  . puni-squeeze))
-  ;; :hook (term-mode-hook . #'puni-disable-puni-mode)
   :init
-  (puni-global-mode))
+  (projectile-mode +1)
+  :bind (:map projectile-mode-map
+              ("C-c p" . projectile-command-map)))
 
-(use-package rainbow-delimiters
-  :ensure t)
-
-(use-package terraform-mode
-  :ensure t)
-
-(use-package tide
-  :ensure t
-  :after (typescript-mode company flycheck)
-  :hook ((typescript-mode . tide-setup)
-         (typescript-mode . tide-hl-identifier-mode)
-         (before-save . tide-format-before-save)))
-
-(use-package typescript-mode
-  :ensure t
-  :mode ("\\.ts\\'" "\\.tsx\\'")
-  :config
-  (setq typescript-indent-level 2))
-
-(use-package vertico
-  :ensure t
-  :init
-  (vertico-mode))
-
-(use-package vterm
-  :ensure t
-  :after exec-path-from-shell)
+(use-package flycheck
+  :init (global-flycheck-mode))
 
 (use-package wakatime-mode
-  :ensure t
-  :hook (after-init . global-wakatime-mode)
-  :custom
-  (wakatime-cli-path (expand-file-name "~/.wakatime/wakatime-cli")))
+  :config (global-wakatime-mode))
+
+(use-package vterm
+  :commands vterm)
+
+(use-package exec-path-from-shell
+  :if (memq window-system '(mac ns x))
+  :config
+  (exec-path-from-shell-initialize))
+
+;; Formatter (Prettier for JS/TS)
+(use-package prettier-js
+  :hook ((js-mode . prettier-js-mode)
+         (typescript-mode . prettier-js-mode)
+         (web-mode . prettier-js-mode)))
+
+(use-package markdown-mode
+  :mode ("README\\.md\\'" . gfm-mode)
+  :init (setq markdown-command "multimarkdown"))
 
 (use-package web-mode
-  :ensure t
-  :mode ("\\.js\\'" "\\.jsx\\'" "\\.ts\\'" "\\.tsx\\'")
-  :config
-  (setq web-mode-content-types-alist '(("jsx" . "\\.js[x]?\\'")
-                                       ("tsx" . "\\.ts[x]?\\'"))))
+  :mode ("\\.js\\'" "\\.jsx\\'" "\\.ts\\'" "\\.tsx\\'" "\\.html\\'"))
 
-(use-package window-numbering
-  :ensure t
-  :custom
-  (windmove-default-keybindings 'meta)
-  (window-numbering-mode t))
-
-(use-package yaml-mode
-  :ensure t)
-
-(use-package yasnippet
-  :ensure t
-  :defer t)
+(use-package dockerfile-mode)
+(use-package terraform-mode)
+(use-package yaml-mode)
 
 (provide 'init)
 ;;; init.el ends here
