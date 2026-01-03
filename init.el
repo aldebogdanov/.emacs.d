@@ -124,6 +124,9 @@ See `cider-find-and-clear-repl-output' for more info."
         company-tooltip-align-annotations t
         company-dabbrev-downcase nil))
 
+(use-package compat
+  :ensure t)
+
 (use-package defaults
   :no-require
   :hook (prog-mode . display-line-numbers-mode)
