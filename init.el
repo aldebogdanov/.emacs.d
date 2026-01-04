@@ -52,6 +52,9 @@
         ring-bell-function 'ignore
         use-short-answers t)     ; y/n instead of yes/no
   (global-display-line-numbers-mode t)
+
+  ;; Font size
+  (set-face-attribute 'default nil :height 100)
   
   ;; Encoding
   (set-language-environment "UTF-8")
@@ -68,7 +71,8 @@
   ;; Mac/System specifics
   (when (eq system-type 'darwin)
     (setq mac-right-command-modifier 'control
-          delete-by-moving-to-trash t))
+          delete-by-moving-to-trash t
+	  ns-use-native-fullscreen nil))
   
   ;; Better Scrolling (Emacs 29+)
   (pixel-scroll-precision-mode 1))
@@ -87,6 +91,57 @@
 ;; Visual Undo
 (use-package vundo
   :bind ("C-x u" . vundo))
+
+;;; Desktop save/restore – automatically remember open files and layout
+(use-package desktop
+  :ensure nil  ; built-in package
+  :init
+  ;; Save desktop automatically when quitting
+  (desktop-save-mode 1)
+
+  ;; Where to save the desktop file (customize if you want)
+  (setq desktop-path '("~/.emacs.d/"))
+  (setq desktop-dirname "~/.emacs.d/")
+  (setq desktop-base-file-name ".emacs.desktop")
+
+  ;; Save more things (history, registers, etc.)
+  (setq desktop-save t)                  ; always save without asking
+  (setq desktop-load-locked-desktop t)   ; load even if locked (safe in single-user)
+
+  ;; What to save
+  (setq desktop-restore-eager t)         ; restore first 10 buffers immediately
+  (setq desktop-restore-frames t)        ; restore frame positions/sizes (Emacs 29+)
+  (setq desktop-restore-in-current-display t)
+  (setq desktop-restore-reuses-frames t)
+
+  ;; Optional: save/restore these extra things
+  (add-to-list 'desktop-globals-to-save 'kill-ring)         ; yank history
+  (add-to-list 'desktop-globals-to-save 'search-ring)
+  (add-to-list 'desktop-globals-to-save 'regexp-search-ring)
+  (add-to-list 'desktop-globals-to-save 'register-alist)
+
+  ;; Don't save certain buffers
+  (setq desktop-buffers-not-to-save
+        (concat "\\("
+                "^nn\\.a[0-9]+\\|\\.log\\|(ftp)\\|^tags\\|^TAGS"
+                "\\|\\.diary\\|\\.newsrc-dribble\\|\\.bbdb"
+                "\\)$"))
+  (add-to-list 'desktop-modes-not-to-save 'dired-mode)
+  (add-to-list 'desktop-modes-not-to-save 'Info-mode)
+  (add-to-list 'desktop-modes-not-to-save 'info-lookup-mode)
+  (add-to-list 'desktop-modes-not-to-save 'fundamental-mode)
+  (add-to-list 'desktop-modes-not-to-save 'magit-mode)          ; optional
+  (add-to-list 'desktop-modes-not-to-save 'vterm-mode)          ; optional – vterm sessions don't restore well
+
+  ;;; Prevent desktop from saving/restoring fullscreen (via frameset filtering)
+  (with-eval-after-load 'frameset
+    ;; Never save/restore fullscreen parameter
+    (add-to-list 'frameset-filter-alist '(fullscreen . :never))
+  
+    ;; Optional extras for macOS
+    (add-to-list 'frameset-filter-alist '(fullscreen-restore . :never))  ; related state
+    (add-to-list 'frameset-filter-alist '(ns-appearance . :never))       ; dark/light
+    (add-to-list 'frameset-filter-alist '(ns-transparent-titlebar . :never))))
 
 ;;; 4. Modern Completion Stack (Vertico + Corfu)
 ;; -----------------------------------------------------------------------------
@@ -122,7 +177,35 @@
 (use-package cape
   :init
   (add-to-list 'completion-at-point-functions #'cape-dabbrev)
-  (add-to-list 'completion-at-point-functions #'cape-file))
+  (add-to-list 'completion-at-point-functions #'cape-file)
+
+;; === SMART HYBRID COMPLETIONS: LSP always, CIDER only when connected ===
+  (defun my/setup-clojure-completions ()
+    "Configure completion-at-point-functions for Clojure buffers.
+Prioritizes CIDER when connected (great for Overtone/runtime symbols),
+falls back to LSP (static analysis) and Cape."
+    (setq-local completion-at-point-functions
+                (cond
+                 ;; REPL connected → CIDER first (best for evaluated defs, Overtone macros)
+                 ((and (bound-and-true-p cider-mode)
+                       (cider-connected-p))
+                  (list #'cider-complete-at-point
+                        #'lsp-completion-at-point
+                        #'cape-dabbrev
+                        #'cape-file))
+
+                 ;; No REPL yet → LSP first (good for browsing unevaluated code)
+                 (t
+                  (list #'lsp-completion-at-point
+                        #'cape-dabbrev
+                        #'cape-file)))))
+
+  ;; Set up completions when entering clojure-mode
+  (add-hook 'clojure-mode-hook #'my/setup-clojure-completions)
+
+  ;; Reconfigure when CIDER connects/disconnects (so priority switches automatically)
+  (add-hook 'cider-connected-hook #'my/setup-clojure-completions)
+  (add-hook 'cider-disconnected-hook #'my/setup-clojure-completions))
 
 ;;; 5. Clojure & Overtone Setup
 ;; -----------------------------------------------------------------------------
@@ -144,6 +227,7 @@
   (cider-use-fringe-indicators nil)         ; Clean UI
   :config
   ;; Allow jack-in without project (useful for quick scratchpads)
+  (global-set-key (kbd "M-RET") #'cider-eval-defun-at-point)
   (setq cider-allow-jack-in-without-project t))
 
 ;; Structured Editing (Puni is great, kept it)
@@ -163,6 +247,8 @@
 	       ("C-M-'"  . puni-raise)
 	       ("C-M-\"" . puni-convolute)
 	       ("C-M-;"  . puni-squeeze)))
+
+(add-hook 'prog-mode-hook #'electric-pair-mode)
 
 ;;; 6. LSP (Language Server Protocol)
 ;; -----------------------------------------------------------------------------
@@ -191,12 +277,31 @@
                 completion-category-defaults nil))
   (add-hook 'lsp-completion-mode-hook #'corfu-lsp-setup))
 
+(defun my/hide-lsp-ui-doc-on-click (&rest _)
+  "Hide lsp-ui-doc unconditionally."
+  (when (lsp-ui-doc--visible-p)
+    (lsp-ui-doc-hide)))
+
+(defun my/toggle-lsp-ui-doc ()
+  "Hide lsp-ui-doc if it is visible and show if it if not."
+  (interactive)
+  (if (lsp-ui-doc--visible-p)
+    (lsp-ui-doc-hide)
+    (lsp-ui-doc-show)))
+
 (use-package lsp-ui
-  :after lsp-mode
-  :custom
-  (lsp-ui-doc-enable t)
-  (lsp-ui-doc-position 'at-point)
-  (lsp-ui-sideline-enable nil)) ;; Disable sideline for cleaner live-coding view
+             :ensure t
+             :config
+             (setq lsp-ui-doc-position 'at-point)
+             (setq lsp-ui-doc-show-with-cursor nil)
+             (setq lsp-ui-doc-show-with-mouse nil)
+
+             (advice-add 'mouse-set-point :before #'my/hide-lsp-ui-doc-on-click)
+
+             :bind (:map lsp-ui-mode-map
+                         ("C-c d" . lsp-ui-doc-show)
+                         ("C-c h" . lsp-ui-doc-hide)
+                         ("C-c t" . my/toggle-lsp-ui-doc)))
 
 (use-package lsp-java
   :after lsp-mode)
@@ -221,7 +326,13 @@
               ("C-c p" . projectile-command-map)))
 
 (use-package flycheck
-  :init (global-flycheck-mode))
+  :init (global-flycheck-mode)
+  :config
+  ;; Disable mouse hover tooltips entirely (keeps keyboard/idle echo area display)
+  (setq flycheck-help-echo-function nil))
+
+(use-package flycheck-popup-tip
+  :hook (flycheck-mode . flycheck-popup-tip-mode))
 
 (use-package wakatime-mode
   :config (global-wakatime-mode))
@@ -250,6 +361,26 @@
 (use-package dockerfile-mode)
 (use-package terraform-mode)
 (use-package yaml-mode)
+(use-package nix-mode)
 
 (provide 'init)
 ;;; init.el ends here
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(package-selected-packages
+   '(all-the-icons cape cider color-theme-sanityinc-tomorrow corfu
+		   dockerfile-mode exec-path-from-shell flycheck
+		   flycheck-popup-tip gcmh lsp-java lsp-metals lsp-ui
+		   magit-todos marginalia nix-mode orderless
+		   prettier-js projectile puni rainbow-delimiters
+		   terraform-mode vertico vterm vundo wakatime-mode
+		   web-mode yaml-mode)))
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ )
