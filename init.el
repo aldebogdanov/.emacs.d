@@ -168,6 +168,8 @@
   (global-corfu-mode)
   :custom
   (corfu-auto t)                 ; Enable auto completion
+  (corfu-auto-delay 0.2)         ; Wait 0.2s before triggering (reduces spam)
+  (corfu-auto-prefix 3)          ; Only auto-trigger after 3 chars (prevents early "defi" hangs)
   (corfu-cycle t)                ; Cycle through candidates
   (corfu-quit-no-match 'separator)
   (corfu-popupinfo-mode t)       ; Show documentation in popup
@@ -176,36 +178,21 @@
 ;; Add extensions for Corfu
 (use-package cape
   :init
-  (add-to-list 'completion-at-point-functions #'cape-dabbrev)
   (add-to-list 'completion-at-point-functions #'cape-file)
+  (add-to-list 'completion-at-point-functions #'cape-dabbrev))
 
-;; === SMART HYBRID COMPLETIONS: LSP always, CIDER only when connected ===
-  (defun my/setup-clojure-completions ()
-    "Configure completion-at-point-functions for Clojure buffers.
-Prioritizes CIDER when connected (great for Overtone/runtime symbols),
-falls back to LSP (static analysis) and Cape."
-    (setq-local completion-at-point-functions
-                (cond
-                 ;; REPL connected → CIDER first (best for evaluated defs, Overtone macros)
-                 ((and (bound-and-true-p cider-mode)
-                       (cider-connected-p))
-                  (list #'cider-complete-at-point
-                        #'lsp-completion-at-point
-                        #'cape-dabbrev
-                        #'cape-file))
+;; === HYBRID COMPLETIONS ===
+(defun my/composite-capf ()
+  "Composite CAPF: CIDER and LSP simultenously."
+  (cape-wrap-super
+   #'cider-complete-at-point
+   #'lsp-completion-at-point))
 
-                 ;; No REPL yet → LSP first (good for browsing unevaluated code)
-                 (t
-                  (list #'lsp-completion-at-point
-                        #'cape-dabbrev
-                        #'cape-file)))))
+(defun my/setup-composite-capf ()
+  "Setup one and only my composite CAPF."
+  (setq-local completion-at-point-functions (list #'my/composite-capf)))
 
-  ;; Set up completions when entering clojure-mode
-  (add-hook 'clojure-mode-hook #'my/setup-clojure-completions)
-
-  ;; Reconfigure when CIDER connects/disconnects (so priority switches automatically)
-  (add-hook 'cider-connected-hook #'my/setup-clojure-completions)
-  (add-hook 'cider-disconnected-hook #'my/setup-clojure-completions))
+(add-hook 'lsp-completion-mode-hook #'my/setup-composite-capf)
 
 ;;; 5. Clojure & Overtone Setup
 ;; -----------------------------------------------------------------------------
@@ -265,17 +252,18 @@ falls back to LSP (static analysis) and Cape."
          (lsp-mode . lsp-enable-which-key-integration))
   :custom
   (lsp-headerline-breadcrumb-enable nil)  ; Clean UI
-  (lsp-lens-enable t)                     ; Show reference counts
   (lsp-enable-symbol-highlighting t)
-  (lsp-idle-delay 0.5)
   (lsp-clojure-custom-server-command nil) ; Ensure it uses automatic path or define manually
-  :config
-  ;; Integrate with Orderless/Corfu
-  (setq lsp-completion-provider :none)
-  (defun corfu-lsp-setup ()
-    (setq-local completion-styles '(orderless)
-                completion-category-defaults nil))
-  (add-hook 'lsp-completion-mode-hook #'corfu-lsp-setup))
+  (lsp-prefer-capf t)         ; Use Corfu instead of Company → eliminates "autoconfigure company-mode" spam
+  (lsp-enable-snippet nil)    ; No yasnippet → eliminates the yasnippet warning
+  (lsp-idle-delay 0.7)
+  (lsp-response-timeout 10)
+  (read-process-output-max (* 4 1024 1024))
+  (lsp-lens-enable nil)       ; disable code lenses
+  (lsp-file-watch-ignored-directories '("[/\\\\]\\.git\\'"
+                                        "[/\\\\]\\.lsp\\'"
+                                        "[/\\\\]\\.clj-kondo\\'"
+                                        "[/\\\\]\\.cpcache\\'")))
 
 (defun my/hide-lsp-ui-doc-on-click (&rest _)
   "Hide lsp-ui-doc unconditionally."
@@ -372,7 +360,7 @@ falls back to LSP (static analysis) and Cape."
  ;; If there is more than one, they won't work right.
  '(package-selected-packages
    '(all-the-icons cape cider color-theme-sanityinc-tomorrow corfu
-		   dockerfile-mode exec-path-from-shell flycheck
+		   dockerfile-mode exec-path-from-shell
 		   flycheck-popup-tip gcmh lsp-java lsp-metals lsp-ui
 		   magit-todos marginalia nix-mode orderless
 		   prettier-js projectile puni rainbow-delimiters

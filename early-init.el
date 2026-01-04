@@ -9,6 +9,10 @@
 
 ;;; Code:
 
+;; LSP speedup
+(setenv "LSP_USE_PLISTS" "true")
+(setq lsp-use-plists t)
+
 ;; Defer garbage collection during startup for speed
 (setq gc-cons-threshold most-positive-fixnum
       gc-cons-percentage 0.6)
