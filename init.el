@@ -92,6 +92,19 @@
 (use-package vundo
   :bind ("C-x u" . vundo))
 
+;; Alternative to async-shell-command that runs commands in detached sessions
+(use-package detached
+  :init
+  (detached-init)
+  :bind (([remap async-shell-command] . detached-shell-command))
+  :config
+  (defun my/detached-project-shell-command ()
+    "Run `detached-shell-command` in the current project's root."
+    (interactive)
+    (let* ((project (project-current t))
+           (default-directory (project-root project)))
+      (call-interactively #'detached-shell-command))))
+
 ;;; Desktop save/restore – automatically remember open files and layout
 (use-package desktop
   :ensure nil  ; built-in package
@@ -99,13 +112,7 @@
   ;; Save desktop automatically when quitting
   (desktop-save-mode 1)
 
-  ;; Where to save the desktop file (customize if you want)
-  (setq desktop-path '("~/.emacs.d/"))
-  (setq desktop-dirname "~/.emacs.d/")
-  (setq desktop-base-file-name ".emacs.desktop")
-
   ;; Save more things (history, registers, etc.)
-  (setq desktop-save t)                  ; always save without asking
   (setq desktop-load-locked-desktop t)   ; load even if locked (safe in single-user)
 
   ;; What to save
@@ -141,7 +148,34 @@
     ;; Optional extras for macOS
     (add-to-list 'frameset-filter-alist '(fullscreen-restore . :never))  ; related state
     (add-to-list 'frameset-filter-alist '(ns-appearance . :never))       ; dark/light
-    (add-to-list 'frameset-filter-alist '(ns-transparent-titlebar . :never))))
+    (add-to-list 'frameset-filter-alist '(ns-transparent-titlebar . :never)))
+
+  :config
+  ;; Where to save the desktop file (customize if you want)
+  (setq desktop-path '(".")
+        desktop-dirname nil
+        desktop-base-file-name ".emacs.desktop"
+        desktop-file-name-format 'local)
+
+  ;; Function to switch desktop environments based on Projectile root
+  (defun my/projectile-desktop-switch ()
+    "Save current project desktop and load the new one."
+    (interactive)
+    (let ((project-root (projectile-project-root)))
+      (when project-root
+        ;; Save current desktop before switching
+        (desktop-save-in-desktop-dir)
+        ;; Clear current buffers to avoid project mixing
+        (desktop-clear)
+        ;; Change directory to the new project root and load its desktop
+        (setq desktop-dirname project-root)
+        (desktop-read project-root))))
+
+  ;; Hook into Projectile
+  (add-hook 'projectile-after-switch-project-hook #'my/projectile-desktop-switch)
+
+  ;; always save without asking)
+  (setq desktop-save t))
 
 ;;; 4. Modern Completion Stack (Vertico + Corfu)
 ;; -----------------------------------------------------------------------------
@@ -194,7 +228,7 @@
 
 (add-hook 'lsp-completion-mode-hook #'my/setup-composite-capf)
 
-;;; 5. Clojure & Overtone Setup
+;;; 5. Clojure Setup
 ;; -----------------------------------------------------------------------------
 
 (use-package clojure-mode
@@ -215,6 +249,7 @@
   :config
   ;; Allow jack-in without project (useful for quick scratchpads)
   (global-set-key (kbd "M-RET") #'cider-eval-defun-at-point)
+  (global-set-key (kbd "C-c C-M-x") #'cider-eval-buffer)
   (setq cider-allow-jack-in-without-project t))
 
 ;; Structured Editing (Puni is great, kept it)
@@ -237,6 +272,15 @@
 
 (add-hook 'prog-mode-hook #'electric-pair-mode)
 
+(defun parmezan ()
+  "Run parmezan on the current buffer."
+  (interactive)
+  (when (buffer-file-name)
+    (save-buffer)
+    (shell-command (format "parmezan --file %s --write"
+                          (shell-quote-argument (buffer-file-name))))
+    (revert-buffer t t t)))
+
 ;;; 6. LSP (Language Server Protocol)
 ;; -----------------------------------------------------------------------------
 ;; Kept lsp-mode as it handles Java/Clojure heavy-lifting well.
@@ -251,6 +295,7 @@
          (scala-mode . lsp-deferred)
          (lsp-mode . lsp-enable-which-key-integration))
   :custom
+  (lsp-diagnostics-provider :flymake)
   (lsp-headerline-breadcrumb-enable nil)  ; Clean UI
   (lsp-enable-symbol-highlighting t)
   (lsp-clojure-custom-server-command nil) ; Ensure it uses automatic path or define manually
@@ -297,7 +342,26 @@
 (use-package lsp-metals
   :after lsp-mode)
 
-;;; 7. Tools & Utils
+;;; 7. Copilot
+;; -----------------------------------------------------------------------------
+
+(use-package copilot
+  :vc (:url "https://github.com/copilot-emacs/copilot.el"
+            :rev :newest
+            :branch "main")
+  :bind (:map copilot-mode-map
+		 ("<tab>" . 'copilot-accept-completion)
+		 ("<backtab>" . 'indent-for-tab-command))
+  :hook
+  (prog-mode . copilot-mode)
+  :config
+  (add-to-list 'copilot-indentation-alist '(prog-mode 2))
+  (add-to-list 'copilot-indentation-alist '(org-mode 2))
+  (add-to-list 'copilot-indentation-alist '(text-mode 2))
+  (add-to-list 'copilot-indentation-alist '(clojure-mode 2))
+  (add-to-list 'copilot-indentation-alist '(emacs-lisp-mode 2)))
+
+;;; 8. Tools & Utils
 ;; -----------------------------------------------------------------------------
 
 (use-package magit
@@ -311,10 +375,14 @@
   :init
   (projectile-mode +1)
   :bind (:map projectile-mode-map
-              ("C-c p" . projectile-command-map)))
+              ("C-c p" . projectile-command-map))
+  :config
+  ;; Bind & to detached-shell-command in projectile's context
+  (with-eval-after-load 'detached
+    (define-key projectile-command-map (kbd "&") #'my/detached-project-shell-command)))
 
 (use-package flycheck
-  :init (global-flycheck-mode)
+  :init (global-flycheck-mode -1)
   :config
   ;; Disable mouse hover tooltips entirely (keeps keyboard/idle echo area display)
   (setq flycheck-help-echo-function nil))
@@ -347,6 +415,7 @@
   :mode ("\\.js\\'" "\\.jsx\\'" "\\.ts\\'" "\\.tsx\\'" "\\.html\\'"))
 
 (use-package dockerfile-mode)
+(use-package docker-compose-mode)
 (use-package terraform-mode)
 (use-package yaml-mode)
 (use-package nix-mode)
@@ -359,7 +428,8 @@
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
  '(package-selected-packages
-   '(all-the-icons cape cider color-theme-sanityinc-tomorrow corfu
+   '(all-the-icons cape cider color-theme-sanityinc-tomorrow copilot
+		   corfu detached docker docker-compose-mode
 		   dockerfile-mode exec-path-from-shell
 		   flycheck-popup-tip gcmh lsp-java lsp-metals lsp-ui
 		   magit-todos marginalia nix-mode orderless
