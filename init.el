@@ -96,14 +96,25 @@
 (use-package detached
   :init
   (detached-init)
-  :bind (([remap async-shell-command] . detached-shell-command))
-  :config
-  (defun my/detached-project-shell-command ()
-    "Run `detached-shell-command` in the current project's root."
-    (interactive)
-    (let* ((project (project-current t))
-           (default-directory (project-root project)))
-      (call-interactively #'detached-shell-command))))
+  :bind (([remap async-shell-command] . detached-shell-command)))
+
+(defun my/detached-project-shell-command ()
+  "Run `detached-shell-command` in the current project's root."
+  (interactive)
+  (let* ((project (project-current t))
+         (default-directory (project-root project)))
+    (call-interactively #'detached-shell-command)))
+
+(defun my/detached-project-compile ()
+  "Run `detached-compile` in the current project's root."
+  (interactive)
+  (let ((default-directory (project-root (project-current t))))
+    (call-interactively #'detached-compile)))
+
+;; Force override the project keybindings
+(require 'project)
+(define-key project-prefix-map (kbd "&") #'my/detached-project-shell-command)
+(define-key project-prefix-map (kbd "c") #'my/detached-project-compile)
 
 ;;; Desktop save/restore – automatically remember open files and layout
 (use-package desktop
@@ -375,12 +386,8 @@
   :init
   (projectile-mode +1)
   :bind (:map projectile-mode-map
-              ("C-c p" . projectile-command-map))
-  :config
-  ;; Bind & to detached-shell-command in projectile's context
-  (with-eval-after-load 'detached
-    (define-key projectile-command-map (kbd "&") #'my/detached-project-shell-command)))
-
+              ("C-c p" . projectile-command-map)))
+  
 (use-package flycheck
   :init (global-flycheck-mode -1)
   :config
