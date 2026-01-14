@@ -96,14 +96,24 @@
 (use-package detached
   :init
   (detached-init)
-  :bind (([remap async-shell-command] . detached-shell-command))
-  :config
-  (defun my/detached-project-shell-command ()
-    "Run `detached-shell-command` in the current project's root."
-    (interactive)
-    (let* ((project (project-current t))
-           (default-directory (project-root project)))
-      (call-interactively #'detached-shell-command))))
+  :bind (([remap async-shell-command] . detached-shell-command)))
+
+(defun my/detached-project-shell-command ()
+  "Run `detached-shell-command` in the current project's root."
+  (interactive)
+  (let* ((project (project-current t))
+         (default-directory (project-root project)))
+    (call-interactively #'detached-shell-command)))
+
+(defun my/detached-project-compile ()
+  "Run `detached-compile` in the current project's root."
+  (interactive)
+  (let ((default-directory (project-root (project-current t))))
+    (call-interactively #'detached-compile)))
+
+;; Force override the project keybindings
+(require 'project)
+(define-key project-prefix-map (kbd "&") #'my/detached-project-shell-command)
 
 ;;; Desktop save/restore – automatically remember open files and layout
 (use-package desktop
@@ -375,12 +385,8 @@
   :init
   (projectile-mode +1)
   :bind (:map projectile-mode-map
-              ("C-c p" . projectile-command-map))
-  :config
-  ;; Bind & to detached-shell-command in projectile's context
-  (with-eval-after-load 'detached
-    (define-key projectile-command-map (kbd "&") #'my/detached-project-shell-command)))
-
+              ("C-c p" . projectile-command-map)))
+  
 (use-package flycheck
   :init (global-flycheck-mode -1)
   :config
@@ -427,6 +433,11 @@
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
+ '(custom-enabled-themes '(sanityinc-tomorrow-blue))
+ '(custom-safe-themes
+   '("76ddb2e196c6ba8f380c23d169cf2c8f561fd2013ad54b987c516d3cabc00216"
+     "6fc9e40b4375d9d8d0d9521505849ab4d04220ed470db0b78b700230da0a86c1"
+     default))
  '(package-selected-packages
    '(all-the-icons cape cider color-theme-sanityinc-tomorrow copilot
 		   corfu detached docker docker-compose-mode
