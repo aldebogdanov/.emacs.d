@@ -425,6 +425,11 @@
 (use-package terraform-mode)
 (use-package yaml-mode)
 (use-package nix-mode)
+(use-package org-preview-html)
+
+(use-package irij-mode
+  :load-path "."
+  :mode "\\.irj\\'")
 
 (provide 'init)
 ;;; init.el ends here
@@ -433,7 +438,7 @@
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
- '(custom-enabled-themes '(sanityinc-tomorrow-blue))
+ '(custom-enabled-themes '(sanityinc-tomorrow-eighties))
  '(custom-safe-themes
    '("76ddb2e196c6ba8f380c23d169cf2c8f561fd2013ad54b987c516d3cabc00216"
      "6fc9e40b4375d9d8d0d9521505849ab4d04220ed470db0b78b700230da0a86c1"
@@ -444,9 +449,9 @@
 		   dockerfile-mode exec-path-from-shell
 		   flycheck-popup-tip gcmh lsp-java lsp-metals lsp-ui
 		   magit-todos marginalia nix-mode orderless
-		   prettier-js projectile puni rainbow-delimiters
-		   terraform-mode vertico vterm vundo wakatime-mode
-		   web-mode yaml-mode)))
+		   org-preview-html prettier-js projectile puni
+		   rainbow-delimiters terraform-mode vertico vterm
+		   vundo wakatime-mode web-mode yaml-mode)))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
