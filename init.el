@@ -427,6 +427,9 @@
 (use-package nix-mode)
 (use-package org-preview-html)
 
+(use-package irij-nrepl
+  :load-path ".")
+
 (use-package irij-mode
   :load-path "."
   :mode "\\.irj\\'")
