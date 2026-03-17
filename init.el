@@ -427,12 +427,25 @@
 (use-package nix-mode)
 (use-package org-preview-html)
 
+;;; 10. ℑ Irij
+;; -----------------------------------------------------------------------------
+;; Tools for working with Irij and research and debug it's Java code
+
 (use-package irij-nrepl
-  :load-path ".")
+  :load-path "./irij")
 
 (use-package irij-mode
-  :load-path "."
+  :load-path "./irij"
   :mode "\\.irj\\'")
+
+(use-package lsp-java :after lsp)
+(use-package dap-mode
+  :after lsp
+  :config
+  (dap-auto-configure-mode)
+  (require 'dap-java))
+
+;; -----------------------------------------------------------------------------
 
 (provide 'init)
 ;;; init.el ends here
@@ -450,11 +463,11 @@
    '(all-the-icons cape cider color-theme-sanityinc-tomorrow copilot
 		   corfu detached docker docker-compose-mode
 		   dockerfile-mode exec-path-from-shell
-		   flycheck-popup-tip gcmh lsp-java lsp-metals lsp-ui
-		   magit-todos marginalia nix-mode orderless
-		   org-preview-html prettier-js projectile puni
-		   rainbow-delimiters terraform-mode vertico vterm
-		   vundo wakatime-mode web-mode yaml-mode)))
+		   flycheck-popup-tip gcmh kotlin-ts-mode lsp-java
+		   lsp-metals lsp-ui magit-todos marginalia nix-mode
+		   orderless org-preview-html prettier-js projectile
+		   puni rainbow-delimiters terraform-mode vertico
+		   vterm vundo wakatime-mode web-mode yaml-mode)))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
