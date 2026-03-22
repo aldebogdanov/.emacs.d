@@ -420,6 +420,9 @@
 (use-package web-mode
   :mode ("\\.js\\'" "\\.jsx\\'" "\\.ts\\'" "\\.tsx\\'" "\\.html\\'"))
 
+(use-package kotlin-mode
+  :mode ("\\.kt\\'" "\\.kts\\'"))
+
 (use-package dockerfile-mode)
 (use-package docker-compose-mode)
 (use-package terraform-mode)
@@ -439,11 +442,16 @@
   :mode "\\.irj\\'")
 
 (use-package lsp-java :after lsp)
+
 (use-package dap-mode
   :after lsp
   :config
   (dap-auto-configure-mode)
   (require 'dap-java))
+
+(with-eval-after-load 'dap-mode
+  (setq dap-auto-configure-features '(sessions locals controls tooltip))
+  (setq dap-java-max-variable-string-length 100))
 
 ;; -----------------------------------------------------------------------------
 
@@ -466,8 +474,15 @@
 		   flycheck-popup-tip gcmh kotlin-ts-mode lsp-java
 		   lsp-metals lsp-ui magit-todos marginalia nix-mode
 		   orderless org-preview-html prettier-js projectile
-		   puni rainbow-delimiters terraform-mode vertico
-		   vterm vundo wakatime-mode web-mode yaml-mode)))
+		   puni rainbow-delimiters readgud-jdb realgud
+		   terraform-mode vertico vterm vundo wakatime-mode
+		   web-mode yaml-mode))
+ '(safe-local-variable-values
+   '((eval dap-register-debug-template "Attach to Irij (Port 5005)"
+	   (list :type "java" :request "attach" :hostName "localhost"
+		 :port 5005 :projectName "irij" :sourcePaths
+		 ["/Users/laniakea/dev/irij/src/main/java"] :vmArgs
+		 "--enable-native-access=ALL-UNNAMED")))))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
