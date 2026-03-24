@@ -439,7 +439,9 @@
 
 (use-package irij-mode
   :load-path "./irij"
-  :mode "\\.irj\\'")
+  :mode "\\.irj\\'"
+  :bind (:map irij-mode-map
+              ("M-RET" . irij-nrepl-eval-defun)))
 
 (use-package lsp-java :after lsp)
 
