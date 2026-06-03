@@ -418,7 +418,9 @@
   :init (setq markdown-command "multimarkdown"))
 
 (use-package web-mode
-  :mode ("\\.js\\'" "\\.jsx\\'" "\\.ts\\'" "\\.tsx\\'" "\\.html\\'"))
+  :mode (("\\.js\\'"   . js-ts-mode)      ; or keep web-mode
+         ("\\.jsx\\'"  . tsx-ts-mode)     ; optional fallback
+         ("\\.html\\'" . web-mode)))
 
 (use-package kotlin-mode
   :mode ("\\.kt\\'" "\\.kts\\'"))
@@ -429,6 +431,27 @@
 (use-package yaml-mode)
 (use-package nix-mode)
 (use-package org-preview-html)
+
+;;; TypeScript / TSX Support
+;; -----------------------------------------------------------------------------
+
+;; Prefer built-in tree-sitter modes (Emacs 29+)
+(use-package typescript-ts-mode
+  :ensure nil  ; built-in
+  :mode (("\\.ts\\'"  . typescript-ts-mode)
+         ("\\.tsx\\'" . tsx-ts-mode))
+  :hook ((typescript-ts-mode . lsp-deferred)
+         (tsx-ts-mode . lsp-deferred))
+  :config
+  ;; Indentation (adjust to your preference)
+  (setq typescript-ts-mode-indent-offset 2))
+
+;; Optional: treesit-auto to automatically install grammar if missing
+(use-package treesit-auto
+  :ensure t
+  :config
+  (global-treesit-auto-mode 1)
+  (setq treesit-auto-install 'prompt))  ; or t to auto-install
 
 ;;; 10. ℑ Irij
 ;; -----------------------------------------------------------------------------
@@ -477,8 +500,8 @@
 		   lsp-metals lsp-ui magit-todos marginalia nix-mode
 		   orderless org-preview-html prettier-js projectile
 		   puni rainbow-delimiters readgud-jdb realgud
-		   terraform-mode vertico vterm vundo wakatime-mode
-		   web-mode yaml-mode))
+		   terraform-mode treesit-auto vertico vterm vundo
+		   wakatime-mode web-mode yaml-mode))
  '(safe-local-variable-values
    '((eval dap-register-debug-template "Attach to Irij (Port 5005)"
 	   (list :type "java" :request "attach" :hostName "localhost"
