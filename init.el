@@ -410,7 +410,7 @@
 ;; Formatter (Prettier for JS/TS)
 (use-package prettier-js
   :hook ((js-mode . prettier-js-mode)
-         (typescript-mode . prettier-js-mode)
+         (typescript-mode . prettier-js-mode)q
          (web-mode . prettier-js-mode)))
 
 (use-package markdown-mode
@@ -467,6 +467,14 @@
               ("M-RET" . irij-nrepl-eval-defun)))
 
 (use-package lsp-java :after lsp)
+
+(setq lsp-java-vmargs
+      '("-XX:+UseParallelGC"
+        "-XX:GCTimeRatio=4"
+        "-XX:AdaptiveSizePolicyWeight=90"
+        "-Dsun.zip.disableMemoryMapping=true"
+        "-Xmx4G"      ; Try 4G or even 6G if you have RAM
+        "-Xms1G"))
 
 (use-package dap-mode
   :after lsp

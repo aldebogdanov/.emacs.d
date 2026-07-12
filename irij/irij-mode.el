@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2024  Irij Contributors
 ;; Author: Irij Contributors
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Keywords: languages irij
 ;; URL: https://github.com/irij-lang/irij
 ;; Package-Requires: ((emacs "27.1"))
@@ -79,11 +79,11 @@
 ;; ── Font-lock keywords ────────────────────────────────────────────────
 
 (defconst irij-keywords
-  '("fn" "do" "if" "else" "match" "type" "newtype"
+  '("fn" "do" "if" "else" "match" "spec" "newtype"
     "mod" "use" "pub" "with" "scope" "effect"
     "role" "cap" "handler" "impl" "proto"
-    "pre" "post" "law" "contract" "select"
-    "enclave" "forall" "par-each" "on-failure"
+    "pre" "post" "contract" "select"
+    "enclave" "par-each" "on-failure"
     "in" "out")
   "Reserved words in Irij.")
 
@@ -93,14 +93,15 @@
 
 (defconst irij-builtin-fns
   '("print" "println" "to-str" "dbg"
-    "div" "abs" "min" "max"
+    "div" "mod" "abs" "min" "max"
     "head" "tail" "length" "reverse" "sort"
-    "concat" "take" "drop" "to-vec"
+    "concat" "conj" "take" "drop" "to-vec"
     "contains?" "keys" "vals" "get"
-    "nth" "last" "fold"
+    "nth" "last" "fold" "flip"
     "identity" "const" "not" "empty?"
+    "pi" "e"
     "spawn" "sleep" "try" "apply"
-    "await" "timeout" "par" "race" "verify-laws"
+    "await" "timeout" "par" "race"
     "error" "type-of"
     "assoc" "dissoc" "merge"
     "split" "join" "trim" "upper-case" "lower-case"
@@ -108,7 +109,22 @@
     "sqrt" "floor" "ceil" "round" "sin" "cos" "tan" "log" "exp" "pow"
     "random-int" "random-float"
     "parse-int" "parse-float" "char-code" "from-char-code"
-    "read-file" "write-file" "file-exists?" "get-env" "now-ms")
+    "read-file" "write-file" "append-file" "delete-file" "list-dir" "make-dir"
+    "file-exists?" "get-env" "env" "now-ms" "read-line"
+    "json-parse" "json-encode" "json-encode-pretty"
+    "url-encode" "url-decode" "toml-parse"
+    "validate" "validate!"
+    ;; raw-* primitives (effects layer)
+    "raw-http-request" "raw-http-serve"
+    "raw-db-open" "raw-db-query" "raw-db-exec" "raw-db-close" "raw-db-transaction"
+    "raw-sse-response" "raw-sse-send" "raw-sse-close" "raw-sse-closed?"
+    "raw-multipart-field" "raw-multipart-save"
+    "raw-session-create" "raw-session-eval" "raw-session-destroy"
+    "raw-session-subscribe" "raw-session-unsubscribe" "raw-session-cleanup"
+    ;; std.time / std.random / std.env wrappers + handlers
+    "time-now" "time-sleep" "default-time" "fixed-clock"
+    "rand-int" "rand-float" "default-random" "fixed-random"
+    "env-var" "default-env" "mock-env")
   "Built-in functions in Irij.")
 
 ;; Emacs 29+ introduced `font-lock-number-face'.  On older versions
@@ -137,6 +153,8 @@
       ("\\$[A-Z][A-Z0-9_]*" . font-lock-type-face)
       ;; Keyword atoms — :ident (not ::)
       ("\\(?:^\\|[^:]\\)\\(:[a-z][a-z0-9-]*\\)" 1 font-lock-constant-face)
+      ;; Effect row marker — ::: Eff (must match before ::)
+      (":::" . font-lock-keyword-face)
       ;; Type annotations — :: Type
       ("::" . font-lock-keyword-face)
       ;; Bind operators
@@ -161,8 +179,8 @@
       ("\\${[^}]*}" . font-lock-preprocessor-face)
       ;; Function definitions — fn <name>
       ("\\bfn\\s-+\\([a-z][a-z0-9-]*\\)" 1 font-lock-function-name-face)
-      ;; Type definitions — type/newtype <Name>
-      ("\\b\\(?:type\\|newtype\\)\\s-+\\([A-Z][A-Za-z0-9]*\\)" 1 font-lock-type-face)
+      ;; Spec/type definitions — spec/newtype <Name>
+      ("\\b\\(?:spec\\|newtype\\)\\s-+\\([A-Z][A-Za-z0-9]*\\)" 1 font-lock-type-face)
       ;; Binding names — name :=   name :!
       ("\\([a-z][a-z0-9-]*\\)\\s-*:\\(?:=\\|!\\)" 1 font-lock-variable-name-face)
       ))
@@ -189,25 +207,66 @@ and decrease after a line that is less indented than its predecessor."
       (goto-char (- (point-max) pos)))))
 
 (defun irij--compute-indent ()
-  "Return the column to indent the current line to."
+  "Return the column to indent the current line to.
+Rules, in order:
+  1. Blank line → column 0.
+  2. If this line starts with `else`/`else-if` → align with opener (dedent).
+  3. If the containing paren/bracket/brace on the previous line is still
+     open (unbalanced), indent one level beyond its opener column.
+  4. If the previous line opens a block (ends with `=>`, `->`, `:::`, or
+     begins a fn/match/if/with/handler head) → prev indent + offset.
+  5. Otherwise → same indent as previous non-blank line."
   (save-excursion
-    ;; Find the previous non-blank, non-comment line
     (beginning-of-line)
-    (let ((current-blank (looking-at "^[ \t]*$")))
-      (forward-line -1)
-      (while (and (not (bobp))
-                  (or (looking-at "^[ \t]*$")
-                      (looking-at "^[ \t]*;;")))
-        (forward-line -1))
-      (let* ((prev-indent (current-indentation))
-             (prev-line   (buffer-substring (line-beginning-position)
-                                            (line-end-position)))
-             ;; Does the previous line open a new block?
-             (opens-block (irij--line-opens-block prev-line)))
+    (let* ((current-line (buffer-substring (line-beginning-position)
+                                           (line-end-position)))
+           (current-blank (string-match-p "\\`[ \t]*\\'" current-line))
+           (starts-with-else
+            (string-match-p "\\`[ \t]*else\\b" current-line)))
+      (cond
+       (current-blank 0)
+       (t
+        (forward-line -1)
+        (while (and (not (bobp))
+                    (or (looking-at "^[ \t]*$")
+                        (looking-at "^[ \t]*;;")))
+          (forward-line -1))
+        (let* ((prev-indent (current-indentation))
+               (prev-line   (buffer-substring (line-beginning-position)
+                                              (line-end-position)))
+               (unbalanced-open (irij--unbalanced-open-col prev-line))
+               (opens-block (irij--line-opens-block prev-line)))
+          (cond
+           ;; `else` dedents one level from its current hypothetical indent
+           (starts-with-else
+            (max 0 (if opens-block prev-indent
+                     (- prev-indent irij-indent-offset))))
+           ;; Inside an open collection/paren: align to column after opener
+           (unbalanced-open (1+ unbalanced-open))
+           (opens-block (+ prev-indent irij-indent-offset))
+           (t prev-indent))))))))
+
+(defun irij--unbalanced-open-col (line)
+  "If LINE has an unclosed (/ [ / { (ignoring strings and comments),
+return the column of the rightmost such opener. Otherwise nil."
+  (let ((i 0) (len (length line))
+        (stack nil)
+        (in-str nil))
+    (while (< i len)
+      (let ((c (aref line i)))
         (cond
-         (current-blank 0)
-         (opens-block   (+ prev-indent irij-indent-offset))
-         (t             prev-indent))))))
+         ;; String handling (double-quote). Skip escapes.
+         (in-str
+          (cond ((eq c ?\\) (setq i (1+ i)))
+                ((eq c ?\") (setq in-str nil))))
+         ((eq c ?\") (setq in-str t))
+         ;; Line comment — stop scanning.
+         ((and (eq c ?\;) (< (1+ i) len) (eq (aref line (1+ i)) ?\;))
+          (setq i len))
+         ((memq c '(?\( ?\[ ?\{)) (push i stack))
+         ((memq c '(?\) ?\] ?\})) (pop stack)))
+        (setq i (1+ i))))
+    (car stack)))
 
 (defun irij--line-opens-block (line)
   "Return non-nil if LINE ends with a block-opening construct."
@@ -216,7 +275,7 @@ and decrease after a line that is less indented than its predecessor."
     "\\(?:"
     ;; fn / type / newtype declarations without inline body
     "\\bfn\\b.*[^=>]$"
-    "\\|\\btype\\b.*$"
+    "\\|\\bspec\\b.*$"
     "\\|\\bnewtype\\b.*$"
     ;; match / if / else / with / do end of line
     "\\|\\b\\(?:match\\|if\\|else\\|with\\|do\\|scope\\|handler\\|effect\\|impl\\|proto\\)\\b.*$"
