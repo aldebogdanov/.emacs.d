@@ -432,7 +432,7 @@
 (use-package nix-mode)
 (use-package org-preview-html)
 
-;;; TypeScript / TSX Support
+;;; 9. TypeScript / TSX Support
 ;; -----------------------------------------------------------------------------
 
 ;; Prefer built-in tree-sitter modes (Emacs 29+)
@@ -463,6 +463,7 @@
 (use-package irij-mode
   :load-path "./irij"
   :mode "\\.irj\\'"
+  :hook (irij-mode . lsp-deferred)
   :bind (:map irij-mode-map
               ("M-RET" . irij-nrepl-eval-defun)))
 
@@ -486,6 +487,16 @@
   (setq dap-auto-configure-features '(sessions locals controls tooltip))
   (setq dap-java-max-variable-string-length 100))
 
+;;; 11. Quint
+;; -----------------------------------------------------------------------------
+(load-file (expand-file-name "quint/quint-mode.el" user-emacs-directory))
+(load-file (expand-file-name "quint/lsp-quint.el" user-emacs-directory))
+(require 'quint-mode)
+(add-to-list 'auto-mode-alist '("\\.qnt" . quint-mode))
+(use-package lsp-quint
+  :ensure nil ; loaded from quint/, not on any package archive
+  :hook (quint-mode . lsp))
+
 ;; -----------------------------------------------------------------------------
 
 (provide 'init)
@@ -504,12 +515,12 @@
    '(all-the-icons cape cider color-theme-sanityinc-tomorrow copilot
 		   corfu detached docker docker-compose-mode
 		   dockerfile-mode exec-path-from-shell
-		   flycheck-popup-tip gcmh kotlin-ts-mode lsp-java
-		   lsp-metals lsp-ui magit-todos marginalia nix-mode
-		   orderless org-preview-html prettier-js projectile
-		   puni rainbow-delimiters readgud-jdb realgud
+		   flycheck-popup-tip gcmh kotlin-mode lsp-java
+		   lsp-metals lsp-ui magit-todos marginalia
+		   nix-mode orderless org-preview-html prettier-js
+		   projectile puni rainbow-delimiters realgud
 		   terraform-mode treesit-auto vertico vterm vundo
-		   wakatime-mode web-mode yaml-mode))
+		   wakatime-mode web-mode))
  '(safe-local-variable-values
    '((eval dap-register-debug-template "Attach to Irij (Port 5005)"
 	   (list :type "java" :request "attach" :hostName "localhost"
